@@ -1,0 +1,157 @@
+"""
+Image generation via Replicate (Flux 1.1 Pro).
+
+Each call returns a local file path to the downloaded image.
+The character base prompt is always prepended so visual consistency
+is maintained across all generated photos.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+import httpx
+import replicate
+from pathlib import Path
+
+from core.character import load, base_image_prompt, negative_prompt, reference_image_prompt
+from core.api_keys import get_key
+
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "./output"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Flux 1.1 Pro on Replicate — best photorealism + prompt adherence
+MODEL = "black-forest-labs/flux-1.1-pro"
+
+
+def _load_defaults() -> tuple[str, str, str]:
+    """Return (positive, negative, style) from the prompt_defaults singleton row."""
+    try:
+        from db.database import SessionLocal
+        from db.models import PromptDefaults
+        db = SessionLocal()
+        try:
+            row = db.get(PromptDefaults, 1)
+            if row:
+                return (row.positive or "", row.negative or "", row.style or "")
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return ("", "", "")
+
+
+def generate(
+    scene: str,
+    char: dict | None = None,
+    aspect_ratio: str = "4:5",  # Instagram portrait default
+    output_format: str = "jpg",
+    full_prompt: str | None = None,
+    force_base_model: bool = False,
+) -> Path:
+    """
+    Generate a character image for the given scene description.
+
+    Prompt order:
+        global_positive → char_base → char_references → outfit → room → scene → char_style → global_style
+
+    The global defaults (prompt_defaults table) are always merged in so every
+    character gets the same quality/realism baseline regardless of their individual
+    visual fields.
+    """
+    if char is None:
+        char = load()
+
+    global_positive, global_negative, global_style = _load_defaults()
+    char_neg = negative_prompt(char)
+    # Merge negatives: global first so it always wins
+    merged_neg = ", ".join(p for p in [global_negative, char_neg] if p)
+
+    if full_prompt is None:
+        base = base_image_prompt(char)
+        references = reference_image_prompt(char)
+        char_style = char["visual"]["style"]
+        full_prompt = ", ".join(p for p in [base, references, scene, char_style] if p)
+
+    # If the character has a trained LoRA model, use it and inject the trigger word
+    trained_model = char.get("replicate_model")
+    training_ok = char.get("training_status") == "succeeded"
+    model_to_use = trained_model if (trained_model and training_ok and not force_base_model) else MODEL
+
+    if trained_model and training_ok:
+        trigger = (char.get("trigger_word") or "").strip()
+        if trigger and not full_prompt.startswith(trigger):
+            full_prompt = f"{trigger}, {full_prompt}"
+
+    # Wrap with globals: quality prefix first, style suffix last
+    parts = [p for p in [global_positive, full_prompt, global_style] if p]
+    final_prompt = ", ".join(parts)
+    if not final_prompt.strip():
+        raise ValueError("Prompt is empty — set a character base prompt or provide a scene description.")
+
+    client = replicate.Client(api_token=get_key("replicate"))
+    output = client.run(
+        model_to_use,
+        input={
+            "prompt": final_prompt,
+            "negative_prompt": merged_neg,
+            "aspect_ratio": aspect_ratio,
+            "output_format": output_format,
+            "output_quality": 90,
+            "safety_tolerance": 5,
+        },
+    )
+
+    # Replicate returns a URL or file-like; download it
+    url = output[0] if isinstance(output, list) else str(output)
+    filename = OUTPUT_DIR / f"{uuid.uuid4().hex}.{output_format}"
+
+    with httpx.stream("GET", url, timeout=120) as r:
+        r.raise_for_status()
+        with open(filename, "wb") as f:
+            for chunk in r.iter_bytes():
+                f.write(chunk)
+
+    print(f"[image_gen] Saved → {filename}")
+    return filename
+
+
+def generate_batch(scenes: list[str], **kwargs) -> list[Path]:
+    """Generate multiple images for a content batch."""
+    return [generate(scene, **kwargs) for scene in scenes]
+
+
+def generate_scene(
+    prompt: str,
+    aspect_ratio: str = "16:9",
+    output_format: str = "jpg",
+) -> Path:
+    """Generate a location/environment image with no character context."""
+    global_positive, global_negative, global_style = _load_defaults()
+    parts = [p for p in [global_positive, prompt, global_style] if p]
+    final_prompt = ", ".join(parts)
+
+    client = replicate.Client(api_token=get_key("replicate"))
+    output = client.run(
+        MODEL,
+        input={
+            "prompt": final_prompt,
+            "negative_prompt": global_negative or "",
+            "aspect_ratio": aspect_ratio,
+            "output_format": output_format,
+            "output_quality": 90,
+            "safety_tolerance": 5,
+        },
+    )
+
+    url = output[0] if isinstance(output, list) else str(output)
+    filename = OUTPUT_DIR / f"{uuid.uuid4().hex}.{output_format}"
+
+    with httpx.stream("GET", url, timeout=120) as r:
+        r.raise_for_status()
+        with open(filename, "wb") as f:
+            for chunk in r.iter_bytes():
+                f.write(chunk)
+
+    print(f"[image_gen] Saved → {filename}")
+    return filename

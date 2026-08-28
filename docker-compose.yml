@@ -1,0 +1,27 @@
+services:
+  ia-girl:
+    build: .
+    container_name: ia-girl
+    restart: unless-stopped
+    ports:
+      - "8082:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=host.docker.internal
+      - DB_PORT=3306
+      - DB_USER=platform
+      - DB_PASSWORD=12345678
+      - DB_NAME=ia_girl
+      - OUTPUT_DIR=/app/output
+    volumes:
+      - ./output:/app/output
+      - ./.instagram_session.json:/app/.instagram_session.json
+      - ./character.yaml:/app/character.yaml
+      - ./api:/app/api            # hot-reload: code changes are visible without rebuilding
+      - ./core:/app/core
+      - ./db:/app/db
+      - ./worker:/app/worker
+      - ./platforms:/app/platforms
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # resolves on Linux too

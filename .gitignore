@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.instagram_session.json
+output/
+*.egg-info/
