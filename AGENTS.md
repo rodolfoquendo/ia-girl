@@ -137,3 +137,16 @@ Full detail: **[`.ai/guidelines/git-safety.md`](.ai/guidelines/git-safety.md)**
 **DO NOT MESS WITH GIT.** Never run `git checkout`, `git stash`, `git reset`, `git restore`, `git clean`, or anything that discards/overwrites working-tree changes — these repos often carry large amounts of uncommitted work. Commit first, or ask the user, before changing branches.
 
 **NEVER TOUCH `insignia-education/infra/envs`** — read-only, gitignored, unrecoverable personal record of deployed environments. Read it if you need to know what's there; never create, edit, move, or delete anything in it.
+
+## Before starting a task
+
+- Check the current branch first.
+- Decide: reuse it if it's already the right task branch, or cut a new one off `master` — don't assume either without checking.
+- Ask whether this task deploys to `beta`. That answer decides whether direct-to-`master` handling applies to this task.
+- Never push directly to `beta`.
+- Never promote/merge `beta` into `master` — that direction never happens.
+
+## Communication style
+- TL;DR always. Fewest words possible. No preamble, no step-by-step narration, no "here is what I did" summaries, no explaining what you are about to do.
+- Log every command executed and every file write, verbatim — syscalls and writes, not model narration.
+- Report outputs, not steps: state what a command produced/changed, not the fact that you ran it or why.
