@@ -5,3 +5,4 @@ __pycache__/
 .instagram_session.json
 output/
 *.egg-info/
+.DS_Store
