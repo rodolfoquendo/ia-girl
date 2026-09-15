@@ -138,13 +138,26 @@ Full detail: **[`.ai/guidelines/git-safety.md`](.ai/guidelines/git-safety.md)**
 
 **NEVER TOUCH `insignia-education/infra/envs`** — read-only, gitignored, unrecoverable personal record of deployed environments. Read it if you need to know what's there; never create, edit, move, or delete anything in it.
 
+## Git workflow
+
+- **Always confirm the branch first.** Before starting any task, check the current branch and ask the user which branch to use — don't assume, even when one looks obviously right. A stale branch, or another session's branch mid-task, can look plausible and still be wrong.
+- **Branch per task, cut from `master` only.**
+  ```
+  git checkout master && git pull && git checkout -b task/<name>
+  ```
+- **Never commit directly to `master`.** All work happens on a task branch. (This repo has no `beta` branch — a personal project with no staging deploy; ignore any stale reference elsewhere in this file to one.)
+- **Keep local `master` updated.** `git pull` it before cutting a new branch and before merging any PR into it.
+- **Merging to `master` needs explicit permission.** Never merge a branch into `master` on your own judgment — open a PR (`gh pr create`) and ask the user before merging it. Merges to `master` go through GitHub, not a local `git merge`.
+- **After a branch's PR merges, clean up.** Delete it locally and on GitHub, and switch back to `master` locally.
+  ```
+  git checkout master && git pull
+  git branch -d task/<name>
+  git push origin --delete task/<name>
+  ```
+
 ## Before starting a task
 
-- Check the current branch first.
-- Decide: reuse it if it's already the right task branch, or cut a new one off `master` — don't assume either without checking.
-- Ask whether this task deploys to `beta`. That answer decides whether direct-to-`master` handling applies to this task.
-- Never push directly to `beta`.
-- Never promote/merge `beta` into `master` — that direction never happens.
+See "Git workflow" above — check the current branch and ask the user which one to use before doing anything else.
 
 ## Communication style
 - TL;DR always. Fewest words possible. No preamble, no step-by-step narration, no "here is what I did" summaries, no explaining what you are about to do.
